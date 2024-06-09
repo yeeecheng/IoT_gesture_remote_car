@@ -28,20 +28,20 @@ class arm_control():
     
     def __init__(self):
         self.arm_duty = [180, 30, 70, 125]
-        self.elbow_pwm = GPIO.PWM(elbow_pin, 0.1)
+        self.elbow_pwm = GPIO.PWM(elbow_pin, 50)
         self.elbow_pwm.start(0)
         
-        self.shoulder_pwm = GPIO.PWM(shoulder_pin, 0.1)
+        self.shoulder_pwm = GPIO.PWM(shoulder_pin, 50)
         self.shoulder_pwm.start(0)
 
-        self.base_pwm = GPIO.PWM(base_pin, 0.1)
+        self.base_pwm = GPIO.PWM(base_pin, 50)
         self.base_pwm.start(0)
         
         self.gripper_pwm = GPIO.PWM(gripper_pin, 50)
         self.gripper_pwm.start(0)
         
-        #self.set_angle(self.elbow_pwm, self.arm_duty[0])
-        #self.set_angle(self.shoulder_pwm, self.arm_duty[1])
+        self.set_angle(self.elbow_pwm, self.arm_duty[0])
+        self.set_angle(self.shoulder_pwm, self.arm_duty[1])
         #self.set_angle(self.base_pwm, self.arm_duty[2])
         self.set_angle(self.gripper_pwm, self.arm_duty[3])
         
@@ -96,8 +96,8 @@ class arm_control():
             self.set_angle(self.gripper_pwm, self.arm_duty[3])
         
         elif mode == 's':
-            pass
-           
+            #self.set_angle(self.gripper_pwm, 0)
+           pass
         
 
 class all_control():
