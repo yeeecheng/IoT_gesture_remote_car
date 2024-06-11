@@ -2,7 +2,7 @@ import RPi.GPIO as GPIO
 import threading
 from time import sleep
 from flask import Flask, request
-
+import pigpio
 
 GPIO.setwarnings(False)
 # left weel
@@ -14,91 +14,93 @@ in4 = 27
 
 # arm controller
 # elbow(left) servo
-elbow_pin = 1
+elbow_pin = 19
 # gripper servo
-gripper_pin = 7
+gripper_pin = 13
 # base sevo
-base_pin = 8
+base_pin = 12
 # shoulder(rigt) servo
-shoulder_pin = 25
+shoulder_pin = 18
 
 
 
 class arm_control():
     
     def __init__(self):
-        self.arm_duty = [180, 30, 70, 125]
-        self.elbow_pwm = GPIO.PWM(elbow_pin, 50)
-        self.elbow_pwm.start(0)
         
-        self.shoulder_pwm = GPIO.PWM(shoulder_pin, 50)
-        self.shoulder_pwm.start(0)
+        # 500 ~ 2400
+        self.angles = [1300, 2200, 1450, 1400]
+        self.change_pulsewidth = 1
 
-        self.base_pwm = GPIO.PWM(base_pin, 50)
-        self.base_pwm.start(0)
+        self.elbow_servo = pigpio.pi()
+        self.elbow_servo.set_mode(elbow_pin, pigpio.OUTPUT)
+        self.elbow_servo.set_PWM_frequency(elbow_pin, 50)
         
-        self.gripper_pwm = GPIO.PWM(gripper_pin, 50)
-        self.gripper_pwm.start(0)
+        self.gripper_servo = pigpio.pi()
+        self.gripper_servo.set_mode(gripper_pin, pigpio.OUTPUT)
+        self.gripper_servo.set_PWM_frequency(gripper_pin, 50)
         
-        self.set_angle(self.elbow_pwm, self.arm_duty[0])
-        self.set_angle(self.shoulder_pwm, self.arm_duty[1])
-        #self.set_angle(self.base_pwm, self.arm_duty[2])
-        self.set_angle(self.gripper_pwm, self.arm_duty[3])
+        self.base_servo = pigpio.pi()
+        self.base_servo.set_mode(base_pin, pigpio.OUTPUT)
+        self.base_servo.set_PWM_frequency(base_pin, 50)
         
-    def set_angle(self,pwm, angle):
-      
-        duty = 2.5 + (angle / 180) * 10
-        pwm.ChangeDutyCycle(duty);
-    
+        self.shoulder_servo = pigpio.pi()
+        self.shoulder_servo.set_mode(shoulder_pin, pigpio.OUTPUT)
+        self.shoulder_servo.set_PWM_frequency(shoulder_pin, 50)
+        
+        
+        # set initial angle
+        self.elbow_servo.set_servo_pulsewidth(elbow_pin, self.angles[0])
+        self.gripper_servo.set_servo_pulsewidth(gripper_pin, self.angles[1])
+        self.base_servo.set_servo_pulsewidth(base_pin, self.angles[2])
+        self.shoulder_servo.set_servo_pulsewidth(shoulder_pin, self.angles[3])
+        
     def update(self, mode):
-     
-        print(mode)
-        # 10 ~ 200
-        if mode == 'd':
-            if self.arm_duty[0] - 1 >= 10:
-                self.arm_duty[0] = self.arm_duty[0] - 1 
-            self.set_angle(self.elbow_pwm, self.arm_duty[0])
-    
-        elif mode == 'u':
-            if self.arm_duty[0] + 1 <= 200:
-                self.arm_duty[0] = self.arm_duty[0] + 1 
-            self.set_angle(self.elbow_pwm, self.arm_duty[0])
-        # 20 ~ 160
-        elif mode == 'l':
-            if self.arm_duty[2] + 1 <= 150:
-                self.arm_duty[2] = self.arm_duty[2] + 1 
-            self.set_angle(self.base_pwm, self.arm_duty[2])
-        elif mode == 'r':
-            if self.arm_duty[2] - 1 >= 0:
-                self.arm_duty[2] = self.arm_duty[2] - 1 
-            self.set_angle(self.base_pwm, self.arm_duty[2])
-        # 60 ~ 180
-        elif mode == 'f':
-            if self.arm_duty[1] + 1 <= 120:
-                self.arm_duty[1] = self.arm_duty[1] + 1 
-            self.set_angle(self.shoulder_pwm, self.arm_duty[1])
-            
+        
+        if mode == 'f':
+            if self.angles[0] + self.change_pulsewidth <= 1900:
+                self.angles[0] += self.change_pulsewidth
+                self.elbow_servo.set_servo_pulsewidth(elbow_pin, self.angles[0])
+        
         elif mode == 'b':
-            if self.arm_duty[1] - 1 >= 40:
-                self.arm_duty[1] = self.arm_duty[1] - 1
-            self.set_angle(self.shoulder_pwm, self.arm_duty[1])
-        # 10 ~ 125
-        elif mode == 'o':
-
-            if self.arm_duty[3] - 1 >= 10:
-                self.arm_duty[3] = self.arm_duty[3] - 1 
-            self.set_angle(self.gripper_pwm, self.arm_duty[3])
-         
+            if self.angles[0] - self.change_pulsewidth >= 1300:
+                self.angles[0] -= self.change_pulsewidth
+                self.elbow_servo.set_servo_pulsewidth(elbow_pin, self.angles[0])
+  
         elif mode == 'c':
+            if self.angles[1] + self.change_pulsewidth <= 2200:
+                self.angles[1] += self.change_pulsewidth
+                self.gripper_servo.set_servo_pulsewidth(gripper_pin, self.angles[1])
+        
+        elif mode == 'o':
+            if self.angles[1] - self.change_pulsewidth >= 800:
+                self.angles[1] -= self.change_pulsewidth
+                self.gripper_servo.set_servo_pulsewidth(gripper_pin, self.angles[1])
             
-            if self.arm_duty[3] + 1 <= 125:
-                self.arm_duty[3] = self.arm_duty[3] + 1
-            self.set_angle(self.gripper_pwm, self.arm_duty[3])
+        elif mode == 'l':
+            if self.angles[2] + self.change_pulsewidth <= 2100:
+                self.angles[2] += self.change_pulsewidth
+                self.base_servo.set_servo_pulsewidth(base_pin, self.angles[2])
+            
+        elif mode == 'r':
+            if self.angles[2] - self.change_pulsewidth >= 800:
+                self.angles[2] -= self.change_pulsewidth
+                self.base_servo.set_servo_pulsewidth(base_pin, self.angles[2])
+
         
+        elif mode == 'd':
+            if self.angles[3] + self.change_pulsewidth <= 2400:
+                self.angles[3] += self.change_pulsewidth
+                self.shoulder_servo.set_servo_pulsewidth(shoulder_pin, self.angles[3])
+
+        
+        elif mode == 'u':
+            if self.angles[3] - self.change_pulsewidth >= 1400:
+                self.angles[3] -= self.change_pulsewidth
+                self.shoulder_servo.set_servo_pulsewidth(shoulder_pin, self.angles[3])
+                print(self.angles[3] )
         elif mode == 's':
-            #self.set_angle(self.gripper_pwm, 0)
            pass
-        
 
 class all_control():
     
@@ -112,15 +114,17 @@ class all_control():
         GPIO.setup(in3, GPIO.OUT)
         GPIO.setup(in4, GPIO.OUT)
         """
-        GPIO.setup(elbow_pin, GPIO.OUT)
-        GPIO.setup(gripper_pin, GPIO.OUT)
-        GPIO.setup(base_pin, GPIO.OUT)
-        GPIO.setup(shoulder_pin, GPIO.OUT)
-        
+    
         self.arm_control = arm_control()
         
         self.car_control_data = -1
         self.arm_control_data = -1
+    
+    def stop_GPIO(self):
+        self.arm_control.elbow_servo.stop()
+        self.arm_control.gripper_servo.stop()
+        self.arm_control.base_servo.stop()
+        self.arm_control.shoulder_servo.stop()
     
     def car_control(self, mode):
     
@@ -154,7 +158,7 @@ class all_control():
     
         while(True):
             self.arm_control.update(self.arm_control_data)
-            sleep(0.05)
+            sleep(0.005)
     
     def car_controller(self):
         pass
@@ -165,6 +169,7 @@ class all_control():
     
     def __del__(self):
         GPIO.cleanup()
+        
 
 class API_Service():
     
@@ -191,7 +196,7 @@ class API_Service():
                 arm_controll = data["arm"]
             
             self.all_controller.update_controll_data(car_controll, arm_controll)
-            return f"<h1> Ok, receive car: {car_controll}, arm_controll: {arm_controll} </h1>"
+            return f"<h1> Ok, receive car: {car_controll}, arm: {arm_controll} </h1>"
 
     def api_start(self):
         self.app.run(host= self.host, port= self.port)
@@ -206,7 +211,7 @@ class API_Service():
    
 
 if __name__ == "__main__":
-    
+   
     # open API service
     api_service = API_Service("192.168.0.104")
     thread_api_service = threading.Thread(target = api_service.api_start)
@@ -215,4 +220,3 @@ if __name__ == "__main__":
     # arm & car controller
     controller = threading.Thread(target = api_service.controller)
     controller.start()
-
