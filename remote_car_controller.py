@@ -1,16 +1,16 @@
-import RPi.GPIO as GPIO
 import threading
 from time import sleep
 from flask import Flask, request
 import pigpio
+import socket
+import argparse
 
-GPIO.setwarnings(False)
 # left weel
-in1 = 5
-in2 = 6
+in1_pin = 5
+in2_pin = 6
 # right weel
-in3 = 17
-in4 = 27
+in3_pin= 17
+in4_pin = 27
 
 # arm controller
 # elbow(left) servo
@@ -28,6 +28,7 @@ class arm_control():
     
     def __init__(self):
         
+
         # 500 ~ 2400
         self.angles = [1300, 2200, 1450, 1400]
         self.change_pulsewidth = 1
@@ -104,21 +105,32 @@ class arm_control():
 
 class all_control():
     
-    def __init__(self):
+    def __init__(self, arm_sleep):
         
-        GPIO.setmode(GPIO.BCM)
-    
-        """
-        GPIO.setup(in1, GPIO.OUT)
-        GPIO.setup(in2, GPIO.OUT)
-        GPIO.setup(in3, GPIO.OUT)
-        GPIO.setup(in4, GPIO.OUT)
-        """
-    
+        # car wheel servo I/O
+        self.in1_servo = pigpio.pi()
+        self.in1_servo.set_mode(in1_pin, pigpio.OUTPUT)
+        self.in1_servo.set_PWM_frequency(in1_pin, 50)
+        
+        self.in2_servo = pigpio.pi()
+        self.in2_servo.set_mode(in2_pin, pigpio.OUTPUT)
+        self.in2_servo.set_PWM_frequency(in2_pin, 50)
+        
+        self.in3_servo = pigpio.pi()
+        self.in3_servo.set_mode(in3_pin, pigpio.OUTPUT)
+        self.in3_servo.set_PWM_frequency(in3_pin, 50)
+        
+        self.in4_servo = pigpio.pi()
+        self.in4_servo.set_mode(in4_pin, pigpio.OUTPUT)
+        self.in4_servo.set_PWM_frequency(in4_pin, 50)
+        
+        # arm servo I/O
         self.arm_control = arm_control()
-        
+        # data control      
         self.car_control_data = -1
         self.arm_control_data = -1
+        
+        self.arm_sleep = arm_sleep
     
     def stop_GPIO(self):
         self.arm_control.elbow_servo.stop()
@@ -127,61 +139,70 @@ class all_control():
         self.arm_control.shoulder_servo.stop()
     
     def car_control(self, mode):
-    
-        if mode == 'f':
-            GPIO.output(in1, GPIO.HIGH)
-            GPIO.output(in2, GPIO.LOW)
-            GPIO.output(in3, GPIO.HIGH)
-            GPIO.output(in4, GPIO.LOW)
-        elif mode == 'b':
-            GPIO.output(in1, GPIO.LOW)
-            GPIO.output(in2, GPIO.HIGH)
-            GPIO.output(in3, GPIO.LOW)
-            GPIO.output(in4, GPIO.HIGH)
+        
+        if mode == 'b':
+            
+            self.in1_servo.write(in1_pin, 1)
+            self.in2_servo.write(in2_pin, 0)
+            self.in3_servo.write(in3_pin, 1)
+            self.in4_servo.write(in4_pin, 0)
+
+        elif mode == 'f':
+            
+            self.in1_servo.write(in1_pin, 0)
+            self.in2_servo.write(in2_pin, 1)
+            self.in3_servo.write(in3_pin, 0)
+            self.in4_servo.write(in4_pin, 1)
+
         elif mode == 'l':
-            GPIO.output(in1, GPIO.LOW)
-            GPIO.output(in2, GPIO.LOW)
-            GPIO.output(in3, GPIO.HIGH)
-            GPIO.output(in4, GPIO.L)
+            
+            self.in1_servo.write(in1_pin, 0)
+            self.in2_servo.write(in2_pin, 0)
+            self.in3_servo.write(in3_pin, 0)
+            self.in4_servo.write(in4_pin, 1)
+
         elif mode == 'r':
-            GPIO.output(in1, GPIO.HIGH)
-            GPIO.output(in2, GPIO.LOW)
-            GPIO.output(in3, GPIO.LOW)
-            GPIO.output(in4, GPIO.LOW)
+            
+            self.in1_servo.write(in1_pin, 0)
+            self.in2_servo.write(in2_pin, 1)
+            self.in3_servo.write(in3_pin, 0)
+            self.in4_servo.write(in4_pin, 0)
+            
         elif mode == 's':
-            GPIO.output(in1, GPIO.LOW)
-            GPIO.output(in2, GPIO.LOW)
-            GPIO.output(in3, GPIO.LOW)
-            GPIO.output(in4, GPIO.LOW)
+            
+            self.in1_servo.write(in1_pin, 0)
+            self.in2_servo.write(in2_pin, 0)
+            self.in3_servo.write(in3_pin, 0)
+            self.in4_servo.write(in4_pin, 0)
 
     def arm_controller(self):
     
-        while(True):
+        while True:
             self.arm_control.update(self.arm_control_data)
-            sleep(0.005)
+            sleep(self.arm_sleep)
+           
     
     def car_controller(self):
-        pass
+        while True:
+            self.car_control(self.car_control_data)
     
     def update_controll_data(self, car_controll, arm_controll):
         self.car_control_data = car_controll
         self.arm_control_data = arm_controll
     
-    def __del__(self):
-        GPIO.cleanup()
         
 
 class API_Service():
     
-    def __init__(self, host= "127.0.0.1", port= 5000):
+    def __init__(self, args):
         
         
         self.app = Flask(__name__)
-        self.host = host
-        self.port = port
+        self.host = args.ip
+        self.port = args.port
         
         
-        self.all_controller = all_control()
+        self.all_controller = all_control(args.arm_sleep)
         
         @self.app.route("/", methods=['GET'])
         def control():
@@ -203,17 +224,34 @@ class API_Service():
 
     def controller(self):
         
-        thread_arm_controller = threading.Thread(target = self.all_controller.arm_controller())
-        thread_arm_controller.start()
+        thread_arm_controller = threading.Thread(target = self.all_controller.arm_controller)
+        thread_car_controller = threading.Thread(target = self.all_controller.car_controller)
         
-        #thread_car_controller = threading.Thread(target = self.all_controller.car_controller())
-        #thread_car_controller.start()
-   
+        thread_car_controller.start()
+        thread_arm_controller.start()
+
+def get_ip():
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip = s.getsockname()[0]
+    s.close()
+    return ip
+
+def parse_args():
+    
+    ip = get_ip()
+    parse = argparse.ArgumentParser()
+    parse.add_argument("--ip", default= ip, type= str, help= "ip address")
+    parse.add_argument("--port", default= 5000, type= int, help= "port")
+    parse.add_argument("-A", "--arm_sleep", default= 0.001, type= float, help= "arm sleep time")
+    args = parse.parse_args()
+    return args
 
 if __name__ == "__main__":
-   
+    args = parse_args()
     # open API service
-    api_service = API_Service("192.168.0.104")
+    api_service = API_Service(args)
     thread_api_service = threading.Thread(target = api_service.api_start)
     thread_api_service.start()
     
